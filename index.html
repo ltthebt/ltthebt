@@ -2,13 +2,16 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>我的电子手账</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>我的电子手账 V2.0</title>
     <style>
         body {
             margin: 0;
-            background-color: #fdf6e3; /* 米色背景，护眼 */
+            background-color: #fdf6e3; /* 米色背景 */
             font-family: "Microsoft YaHei", sans-serif;
-            overflow: hidden;
+            /* 防止手机上拖动时整个页面跟着动 */
+            overflow: hidden; 
+            touch-action: none; 
         }
 
         /* 顶部工具栏 */
@@ -17,133 +20,241 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: white;
-            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
             border-radius: 50px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             display: flex;
-            gap: 15px;
-            z-index: 1000;
+            flex-wrap: wrap; /* 小屏幕自动换行 */
+            justify-content: center;
+            gap: 10px;
+            z-index: 2000;
+            width: 90%;
+            max-width: 600px;
         }
 
         .tool-btn {
             border: none;
             background: #ffecd1;
-            padding: 10px 20px;
+            padding: 8px 15px;
             border-radius: 20px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             transition: all 0.2s;
+            white-space: nowrap; /* 防止按钮文字换行 */
         }
 
         .tool-btn:hover {
             background: #ffd6a5;
             transform: scale(1.05);
         }
+        
+        /* 隐藏真实的文件上传按钮，太丑了 */
+        #imageInput {
+            display: none;
+        }
 
         /* 手账元素通用样式 */
         .item {
             position: absolute;
-            cursor: move; /* 鼠标放上去显示可移动 */
-            user-select: none;
+            cursor: grab; 
+            cursor: -webkit-grab;
+            user-select: none; /* 防止拖动时选中文字 */
+            -webkit-user-select: none;
             animation: popIn 0.3s ease;
+            touch-action: none; /* 关键：告诉浏览器这个元素由我来处理触控 */
+        }
+        
+        .item:active {
+            cursor: grabbing;
+            cursor: -webkit-grabbing;
         }
 
         /* 便签样式 */
         .note {
             width: 150px;
-            height: 150px;
+            min-height: 150px;
             background: #fff740;
             padding: 15px;
-            box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
-            font-size: 14px;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.15);
+            font-size: 16px;
             transform: rotate(-2deg);
+            border-radius: 5px;
+            /* 让便签里的文字可以被编辑，但不影响拖拽 */
+            word-break: break-all;
         }
 
         /* Emoji样式 */
         .sticker {
-            font-size: 50px;
+            font-size: 60px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        /* 图片样式 */
+        .image-item img {
+            max-width: 250px; /* 限制最大宽度，防止图片太大占满屏幕 */
+            max-height: 250px;
+            border: 5px solid white;
+            box-shadow: 3px 3px 12px rgba(0,0,0,0.2);
+            transform: rotate(2deg);
+            pointer-events: none; /* 让图片本身不响应点击，而是它的容器响应 */
         }
 
         @keyframes popIn {
-            from { transform: scale(0); }
-            to { transform: scale(1); }
+            from { transform: scale(0) rotate(0); opacity: 0;}
+            to { transform: scale(1) rotate(var(--rotation)); opacity: 1;}
         }
     </style>
 </head>
 <body>
 
     <div id="toolbar">
-        <button class="tool-btn" onclick="createNote()">📝 新建便签</button>
-        <button class="tool-btn" onclick="createEmoji()">😊 添加表情</button>
-        <button class="tool-btn" onclick="clearAll()">🗑️ 清空画布</button>
+        <button class="tool-btn" onclick="createNote()">📝 便签</button>
+        <button class="tool-btn" onclick="createEmoji()">😊 表情</button>
+        <button class="tool-btn" onclick="document.getElementById('imageInput').click()">🖼️ 上传图片</button>
+        <button class="tool-btn" style="background:#ffcccb" onclick="clearAll()">🗑️ 清空</button>
     </div>
 
+    <input type="file" id="imageInput" accept="image/*" onchange="handleImageUpload(event)">
+
+
     <script>
-        // 1. 创建便签的功能
+        // --- 功能函数区 ---
+
+        // 1. 创建便签
         function createNote() {
             const note = document.createElement('div');
             note.className = 'item note';
-            note.contentEditable = true; // 允许打字
-            note.innerText = "点击输入内容...";
-            // 随机位置
-            note.style.left = Math.random() * (window.innerWidth - 200) + 'px';
-            note.style.top = Math.random() * (window.innerHeight - 200) + 'px';
-            // 随机一点旋转角度，更自然
-            note.style.transform = `rotate(${Math.random() * 10 - 5}deg)`;
-            
-            addDragFunction(note); // 让它能动
+            note.contentEditable = true; 
+            note.innerText = "点我写字...";
+            placeRandomly(note);
+            addDragFunction(note); 
             document.body.appendChild(note);
         }
 
-        // 2. 创建表情的功能
+        // 2. 创建表情
         function createEmoji() {
-            const emojis = ['🌸', '✨', '🎂', '🐱', '🐶', '📷', '🎉', '🌿'];
+            const emojis = ['🌸', '✨', '🎂', '🐱', '🐶', '📷', '🎉', '🌿', '🍓', '🧸'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             
             const sticker = document.createElement('div');
             sticker.className = 'item sticker';
             sticker.innerText = randomEmoji;
-            sticker.style.left = Math.random() * (window.innerWidth - 100) + 'px';
-            sticker.style.top = Math.random() * (window.innerHeight - 100) + 'px';
-            
+            placeRandomly(sticker);
             addDragFunction(sticker);
             document.body.appendChild(sticker);
         }
+        
+        // 3. 处理图片上传 (新功能!)
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-        // 3. 清空功能
-        function clearAll() {
-            const items = document.querySelectorAll('.item');
-            items.forEach(item => item.remove());
+            // 使用 FileReader 读取用户选中的图片
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'item image-item';
+                
+                const img = document.createElement('img');
+                img.src = e.target.result; // 图片的数据
+                
+                imgContainer.appendChild(img);
+                placeRandomly(imgContainer);
+                addDragFunction(imgContainer);
+                document.body.appendChild(imgContainer);
+            };
+            reader.readAsDataURL(file);
+            // 清空input，这样下次选同一张图也能触发onchange
+            event.target.value = ''; 
         }
 
-        // 4. 核心魔法：让元素可以拖拽的代码
+        // 4. 清空画布
+        function clearAll() {
+            if(confirm('确定要清空所有内容吗？')){
+                const items = document.querySelectorAll('.item');
+                items.forEach(item => item.remove());
+            }
+        }
+
+        // --- 辅助工具区 ---
+        
+        // 随机放置元素，并给一个随机旋转角度
+        function placeRandomly(element) {
+            const rotation = Math.random() * 20 - 10; // -10度到10度之间
+            element.style.setProperty('--rotation', `${rotation}deg`);
+            element.style.transform = `rotate(${rotation}deg)`;
+            // 简单的居中偏随机位置
+            element.style.left = (window.innerWidth / 2 - 100 + Math.random() * 200) + 'px';
+            element.style.top = (window.innerHeight / 2 - 100 + Math.random() * 200) + 'px';
+        }
+
+
+        // --- 核心魔法：全平台拖拽功能 (重要升级!) ---
         function addDragFunction(element) {
             let isDragging = false;
             let startX, startY, initialLeft, initialTop;
 
-            element.addEventListener('mousedown', (e) => {
+            // 获取鼠标或手指的位置
+            function getClientCoords(e) {
+                if (e.touches && e.touches.length > 0) {
+                    return { x: e.touches[0].clientX, y: e.touches[0].clientY }; // 手指位置
+                } else {
+                    return { x: e.clientX, y: e.clientY }; // 鼠标位置
+                }
+            }
+
+            // 开始拖动 (按下鼠标 或 手指触碰)
+            function startDrag(e) {
+                // 如果是便签，且点击的是正在输入文字的区域，就不拖动
+                if (element.isContentEditable && document.activeElement === element) {
+                     return;
+                }
+                
                 isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
+                const coords = getClientCoords(e);
+                startX = coords.x;
+                startY = coords.y;
                 initialLeft = element.offsetLeft;
                 initialTop = element.offsetTop;
-                element.style.zIndex = 1000; // 拖动时提到最上层
-            });
+                
+                element.style.zIndex = 9999; // 拖动时让它浮在最上面
+                element.style.transition = 'none'; // 拖动时关闭过渡动画，更跟手
+            }
 
-            window.addEventListener('mousemove', (e) => {
+            // 拖动中 (鼠标移动 或 手指在屏幕上划动)
+            function doDrag(e) {
+                if (!isDragging) return;
+                
+                // 阻止默认行为（比如屏幕滚动）重要！
+                if (e.cancelable) e.preventDefault(); 
+
+                const coords = getClientCoords(e);
+                const dx = coords.x - startX;
+                const dy = coords.y - startY;
+                element.style.left = `${initialLeft + dx}px`;
+                element.style.top = `${initialTop + dy}px`;
+            }
+
+            // 结束拖动 (松开鼠标 或 手指离开屏幕)
+            function stopDrag() {
                 if (isDragging) {
-                    const dx = e.clientX - startX;
-                    const dy = e.clientY - startY;
-                    element.style.left = `${initialLeft + dx}px`;
-                    element.style.top = `${initialTop + dy}px`;
+                    isDragging = false;
+                    element.style.zIndex = ''; // 恢复层级
+                    element.style.transition = 'all 0.2s'; // 恢复动画效果
                 }
-            });
+            }
 
-            window.addEventListener('mouseup', () => {
-                isDragging = false;
-                element.style.zIndex = ''; 
-            });
+            // --- 监听鼠标事件 (电脑用) ---
+            element.addEventListener('mousedown', startDrag);
+            document.addEventListener('mousemove', doDrag);
+            document.addEventListener('mouseup', stopDrag);
+
+            // --- 监听触屏事件 (手机/平板用) ---
+            // passive: false 是为了能使用 preventDefault() 阻止屏幕滚动
+            element.addEventListener('touchstart', startDrag, {passive: false}); 
+            document.addEventListener('touchmove', doDrag, {passive: false});
+            document.addEventListener('touchend', stopDrag);
         }
     </script>
 </body>
