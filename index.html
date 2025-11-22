@@ -3,29 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>我的电子手账 V2.0</title>
+    <title>我的电子手账 (自动保存版)</title>
     <style>
         body {
             margin: 0;
-            background-color: #fdf6e3; /* 米色背景 */
+            background-color: #fdf6e3;
             font-family: "Microsoft YaHei", sans-serif;
-            /* 防止手机上拖动时整个页面跟着动 */
-            overflow: hidden; 
-            touch-action: none; 
+            overflow: hidden;
+            touch-action: none;
         }
 
-        /* 顶部工具栏 */
+        /* 工具栏样式保持不变 */
         #toolbar {
             position: fixed;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             padding: 10px 15px;
             border-radius: 50px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             display: flex;
-            flex-wrap: wrap; /* 小屏幕自动换行 */
+            flex-wrap: wrap;
             justify-content: center;
             gap: 10px;
             z-index: 2000;
@@ -41,7 +40,7 @@
             cursor: pointer;
             font-size: 14px;
             transition: all 0.2s;
-            white-space: nowrap; /* 防止按钮文字换行 */
+            white-space: nowrap;
         }
 
         .tool-btn:hover {
@@ -49,20 +48,16 @@
             transform: scale(1.05);
         }
         
-        /* 隐藏真实的文件上传按钮，太丑了 */
-        #imageInput {
-            display: none;
-        }
+        #imageInput { display: none; }
 
-        /* 手账元素通用样式 */
+        /* 元素样式 */
         .item {
             position: absolute;
             cursor: grab; 
             cursor: -webkit-grab;
-            user-select: none; /* 防止拖动时选中文字 */
+            user-select: none;
             -webkit-user-select: none;
-            animation: popIn 0.3s ease;
-            touch-action: none; /* 关键：告诉浏览器这个元素由我来处理触控 */
+            touch-action: none;
         }
         
         .item:active {
@@ -70,7 +65,6 @@
             cursor: -webkit-grabbing;
         }
 
-        /* 便签样式 */
         .note {
             width: 150px;
             min-height: 150px;
@@ -78,26 +72,44 @@
             padding: 15px;
             box-shadow: 2px 2px 10px rgba(0,0,0,0.15);
             font-size: 16px;
-            transform: rotate(-2deg);
             border-radius: 5px;
-            /* 让便签里的文字可以被编辑，但不影响拖拽 */
             word-break: break-all;
         }
 
-        /* Emoji样式 */
         .sticker {
             font-size: 60px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
         }
         
-        /* 图片样式 */
         .image-item img {
-            max-width: 250px; /* 限制最大宽度，防止图片太大占满屏幕 */
+            max-width: 250px;
             max-height: 250px;
             border: 5px solid white;
             box-shadow: 3px 3px 12px rgba(0,0,0,0.2);
-            transform: rotate(2deg);
-            pointer-events: none; /* 让图片本身不响应点击，而是它的容器响应 */
+            pointer-events: none;
+        }
+        
+        /* 删除按钮（鼠标悬停时显示） */
+        .delete-btn {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 20px;
+            height: 20px;
+            background: red;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+            z-index: 1001;
+        }
+        
+        /* 只有在电脑上鼠标悬停，或者选中时才显示删除按钮，简单起见这里只做 hover */
+        .item:hover .delete-btn {
+            display: block;
         }
 
         @keyframes popIn {
@@ -112,104 +124,185 @@
         <button class="tool-btn" onclick="createNote()">📝 便签</button>
         <button class="tool-btn" onclick="createEmoji()">😊 表情</button>
         <button class="tool-btn" onclick="document.getElementById('imageInput').click()">🖼️ 上传图片</button>
-        <button class="tool-btn" style="background:#ffcccb" onclick="clearAll()">🗑️ 清空</button>
+        <button class="tool-btn" style="background:#ffcccb" onclick="clearCanvas()">🗑️ 清空全部</button>
     </div>
 
     <input type="file" id="imageInput" accept="image/*" onchange="handleImageUpload(event)">
 
-
     <script>
-        // --- 功能函数区 ---
+        // --- 核心：页面加载时，读取记忆 ---
+        window.onload = function() {
+            loadFromStorage();
+        };
 
-        // 1. 创建便签
-        function createNote() {
+        // --- 1. 创建/恢复 便签 ---
+        // 参数 savedData 是为了恢复数据用的，如果是新建则为 undefined
+        function createNote(savedData) {
             const note = document.createElement('div');
             note.className = 'item note';
             note.contentEditable = true; 
-            note.innerText = "点我写字...";
-            placeRandomly(note);
-            addDragFunction(note); 
+            
+            // 如果有保存的数据，就用保存的；否则用默认值
+            note.innerText = savedData ? savedData.content : "点我写字...";
+            
+            setupElement(note, savedData); // 设置位置和通用功能
+            
+            // 特殊功能：便签内容改变时，也要保存
+            note.addEventListener('input', saveData);
+
             document.body.appendChild(note);
+            if (!savedData) saveData(); // 如果是新建的，立刻保存一次
         }
 
-        // 2. 创建表情
-        function createEmoji() {
-            const emojis = ['🌸', '✨', '🎂', '🐱', '🐶', '📷', '🎉', '🌿', '🍓', '🧸'];
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            
+        // --- 2. 创建/恢复 表情 ---
+        function createEmoji(savedData) {
             const sticker = document.createElement('div');
             sticker.className = 'item sticker';
-            sticker.innerText = randomEmoji;
-            placeRandomly(sticker);
-            addDragFunction(sticker);
+            
+            if (savedData) {
+                sticker.innerText = savedData.content;
+            } else {
+                const emojis = ['🌸', '✨', '🎂', '🐱', '🐶', '📷', '🎉', '🌿', '🍓', '🧸'];
+                sticker.innerText = emojis[Math.floor(Math.random() * emojis.length)];
+            }
+            
+            setupElement(sticker, savedData);
             document.body.appendChild(sticker);
+            if (!savedData) saveData();
         }
         
-        // 3. 处理图片上传 (新功能!)
+        // --- 3. 图片上传与恢复 ---
         function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            // 使用 FileReader 读取用户选中的图片
             const reader = new FileReader();
             reader.onload = function(e) {
-                const imgContainer = document.createElement('div');
-                imgContainer.className = 'item image-item';
-                
-                const img = document.createElement('img');
-                img.src = e.target.result; // 图片的数据
-                
-                imgContainer.appendChild(img);
-                placeRandomly(imgContainer);
-                addDragFunction(imgContainer);
-                document.body.appendChild(imgContainer);
+                createImage(e.target.result); // 提取出创建图片的逻辑
+                event.target.value = ''; 
             };
             reader.readAsDataURL(file);
-            // 清空input，这样下次选同一张图也能触发onchange
-            event.target.value = ''; 
         }
 
-        // 4. 清空画布
-        function clearAll() {
-            if(confirm('确定要清空所有内容吗？')){
-                const items = document.querySelectorAll('.item');
-                items.forEach(item => item.remove());
+        // 专门用来创建图片元素的函数（分为新建和恢复两种情况）
+        function createImage(src, savedData) {
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'item image-item';
+            
+            const img = document.createElement('img');
+            img.src = src;
+            
+            imgContainer.appendChild(img);
+            setupElement(imgContainer, savedData);
+            document.body.appendChild(imgContainer);
+            
+            // 图片加载比较大，稍微延迟一点保存，确保图片出来了
+            if(!savedData) setTimeout(saveData, 100); 
+        }
+
+        // --- 通用设置函数：给每个元素加上拖拽、位置和删除按钮 ---
+        function setupElement(element, savedData) {
+            // 1. 定位
+            if (savedData) {
+                // 如果是恢复模式，使用保存的坐标和角度
+                element.style.left = savedData.left;
+                element.style.top = savedData.top;
+                element.style.transform = savedData.transform;
+                // 把角度存回CSS变量，方便下次读取
+                // 这里的正则提取是为了让 transform rotate 也能正确在CSS变量中运作（如果需要）
+            } else {
+                // 如果是新建模式，随机放置
+                placeRandomly(element);
             }
+
+            // 2. 加上拖拽功能
+            addDragFunction(element);
+
+            // 3. 加上删除小红点（可选优化）
+            const delBtn = document.createElement('div');
+            delBtn.className = 'delete-btn';
+            delBtn.innerText = '×';
+            delBtn.onclick = function(e) {
+                e.stopPropagation(); // 防止触发拖拽
+                if(confirm('删除这个元素？')) {
+                    element.remove();
+                    saveData(); // 删除后保存
+                }
+            };
+            element.appendChild(delBtn);
         }
 
-        // --- 辅助工具区 ---
-        
-        // 随机放置元素，并给一个随机旋转角度
         function placeRandomly(element) {
-            const rotation = Math.random() * 20 - 10; // -10度到10度之间
-            element.style.setProperty('--rotation', `${rotation}deg`);
-            element.style.transform = `rotate(${rotation}deg)`;
-            // 简单的居中偏随机位置
+            const rotation = Math.random() * 20 - 10; 
+            const rotateStr = `rotate(${rotation}deg)`;
+            element.style.transform = rotateStr;
             element.style.left = (window.innerWidth / 2 - 100 + Math.random() * 200) + 'px';
             element.style.top = (window.innerHeight / 2 - 100 + Math.random() * 200) + 'px';
         }
 
+        // --- 核心魔法 1：保存数据 (拍照) ---
+        function saveData() {
+            const items = [];
+            document.querySelectorAll('.item').forEach(el => {
+                // 判断类型
+                let type = 'sticker';
+                let content = el.innerText.replace('×', ''); // 去掉删除按钮的文字
+                
+                if (el.classList.contains('note')) {
+                    type = 'note';
+                } else if (el.classList.contains('image-item')) {
+                    type = 'image';
+                    content = el.querySelector('img').src; // 图片存的是 Base64 编码
+                }
 
-        // --- 核心魔法：全平台拖拽功能 (重要升级!) ---
+                items.push({
+                    type: type,
+                    content: content,
+                    left: el.style.left,
+                    top: el.style.top,
+                    transform: el.style.transform
+                });
+            });
+            
+            // 把对象数组变成字符串，存入浏览器 LocalStorage
+            localStorage.setItem('myHandyData', JSON.stringify(items));
+        }
+
+        // --- 核心魔法 2：读取数据 (还原) ---
+        function loadFromStorage() {
+            const dataStr = localStorage.getItem('myHandyData');
+            if (!dataStr) return; // 如果没有存档，啥也不做
+
+            const items = JSON.parse(dataStr);
+            items.forEach(item => {
+                if (item.type === 'note') createNote(item);
+                else if (item.type === 'sticker') createEmoji(item);
+                else if (item.type === 'image') createImage(item.content, item);
+            });
+        }
+
+        // 清空画布同时清空记忆
+        function clearCanvas() {
+            if(confirm('确定要清空所有内容吗？')){
+                document.querySelectorAll('.item').forEach(item => item.remove());
+                localStorage.removeItem('myHandyData'); // 删掉存档
+            }
+        }
+
+
+        // --- 拖拽功能 (保持之前的逻辑，只加了一行 saveData) ---
         function addDragFunction(element) {
             let isDragging = false;
             let startX, startY, initialLeft, initialTop;
 
-            // 获取鼠标或手指的位置
             function getClientCoords(e) {
-                if (e.touches && e.touches.length > 0) {
-                    return { x: e.touches[0].clientX, y: e.touches[0].clientY }; // 手指位置
-                } else {
-                    return { x: e.clientX, y: e.clientY }; // 鼠标位置
-                }
+                if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                return { x: e.clientX, y: e.clientY };
             }
 
-            // 开始拖动 (按下鼠标 或 手指触碰)
             function startDrag(e) {
-                // 如果是便签，且点击的是正在输入文字的区域，就不拖动
-                if (element.isContentEditable && document.activeElement === element) {
-                     return;
-                }
+                if (e.target.className === 'delete-btn') return; // 点删除按钮时不拖拽
+                if (element.isContentEditable && document.activeElement === element) return;
                 
                 isDragging = true;
                 const coords = getClientCoords(e);
@@ -218,15 +311,12 @@
                 initialLeft = element.offsetLeft;
                 initialTop = element.offsetTop;
                 
-                element.style.zIndex = 9999; // 拖动时让它浮在最上面
-                element.style.transition = 'none'; // 拖动时关闭过渡动画，更跟手
+                element.style.zIndex = 9999;
+                element.style.transition = 'none'; 
             }
 
-            // 拖动中 (鼠标移动 或 手指在屏幕上划动)
             function doDrag(e) {
                 if (!isDragging) return;
-                
-                // 阻止默认行为（比如屏幕滚动）重要！
                 if (e.cancelable) e.preventDefault(); 
 
                 const coords = getClientCoords(e);
@@ -236,22 +326,20 @@
                 element.style.top = `${initialTop + dy}px`;
             }
 
-            // 结束拖动 (松开鼠标 或 手指离开屏幕)
             function stopDrag() {
                 if (isDragging) {
                     isDragging = false;
-                    element.style.zIndex = ''; // 恢复层级
-                    element.style.transition = 'all 0.2s'; // 恢复动画效果
+                    element.style.zIndex = ''; 
+                    element.style.transition = 'all 0.2s';
+                    
+                    // 重点：拖动结束后，保存位置！
+                    saveData();
                 }
             }
 
-            // --- 监听鼠标事件 (电脑用) ---
             element.addEventListener('mousedown', startDrag);
             document.addEventListener('mousemove', doDrag);
             document.addEventListener('mouseup', stopDrag);
-
-            // --- 监听触屏事件 (手机/平板用) ---
-            // passive: false 是为了能使用 preventDefault() 阻止屏幕滚动
             element.addEventListener('touchstart', startDrag, {passive: false}); 
             document.addEventListener('touchmove', doDrag, {passive: false});
             document.addEventListener('touchend', stopDrag);
@@ -259,3 +347,4 @@
     </script>
 </body>
 </html>
+
